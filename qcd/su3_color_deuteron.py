@@ -21,12 +21,12 @@ REPULSION_EPS = 0.05
 COLOR_SINGLET_STRENGTH = 12.0     # enforces both proton and neutron singlets
 
 LEARNING_RATE = 0.07
-MAX_ITER = 1500
+MAX_ITER = 2000
 N_RANDOM_STARTS = 3
 
 # Visualization flags
-DEFAULT_STATIC_ONLY = True
-ANIMATE_LIVE = False
+DEFAULT_STATIC_ONLY = False
+ANIMATE_LIVE = True
 SAVE_GIF = False
 
 NODE_LABELS = ['u_p', 'u_p', 'd_p', 'u_n', 'd_n', 'd_n']   # proton (0-2) + neutron (3-5)
@@ -189,6 +189,10 @@ if __name__ == "__main__":
         final_energies.append(energies[-1])
         
         print(f"Run {run+1} → final E = {energies[-1]:.4f}")
+
+    # === SELECT BEST RUN FOR ANIMATION (lowest energy) ===
+    best_run_idx = np.argmin(final_energies)
+    print(f"\n🎯 Best run (lowest energy): Run {best_run_idx+1} with E = {final_energies[best_run_idx]:.4f}")
     
     if DEFAULT_STATIC_ONLY:
         print("\nGenerating static 3D deuteron result...")
@@ -225,12 +229,12 @@ if __name__ == "__main__":
     
     # Animation / GIF (optional)
     if ANIMATE_LIVE or SAVE_GIF:
-        print("\nGenerating animation (first run)...")
-        hist_pos = histories_pos[0]
-        hist_col = histories_colors[0]
+        print("\nGenerating animation for BEST run (lowest energy)...")
+        hist_pos = histories_pos[best_run_idx]
+        hist_col = histories_colors[best_run_idx]
         energies = np.array([total_energy(torch.tensor(p), torch.tensor(c)).item() 
-                            for p, c in zip(hist_pos, hist_col)])
-        
+                            for p, c in zip(hist_pos, hist_col)])        
+
         fig_anim = plt.figure(figsize=(12, 8))
         ax3d = fig_anim.add_subplot(121, projection='3d')
         ax_e = fig_anim.add_subplot(122)
