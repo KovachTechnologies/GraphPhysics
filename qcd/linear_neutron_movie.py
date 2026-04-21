@@ -147,17 +147,20 @@ if __name__ == "__main__":
         # Row 2: Energy convergence curves
         for run in range(N_RANDOM_STARTS):
             ax_e = fig.add_subplot(2, N_RANDOM_STARTS + 1, N_RANDOM_STARTS + 2 + run)
-            ax_e.plot(histories[run].shape[0] * [0], 'k--', alpha=0.3)  # placeholder
-            ax_e.plot(final_energies[run] * np.ones_like(histories[run]), 'r--', alpha=0.3)
-            ax_e.plot(histories[run].shape[0] * np.arange(len(histories[run])), histories[run].shape[0] * [final_energies[run]], 'r--', alpha=0.3)
-            ax_e.plot(np.arange(len(histories[run])), histories[run].shape[0] * [0], wait_no:
-            ax_e.plot(np.arange(len(histories[run])), [e for e in histories[run] for _ in range(1)], wait — simpler:
-            energies_run = [quark_energy_torch(torch.tensor(pos)).item() for pos in histories[run]]
-            ax_e.plot(energies_run, 'b-', linewidth=2)
+            
+            # Recompute energies from stored positions (more accurate than the optimizer's energies)
+            energies_run = [quark_energy_torch(torch.tensor(pos)).item() 
+                           for pos in histories[run]]
+            
+            ax_e.plot(energies_run, 'b-', linewidth=2, label='Energy')
+            ax_e.axhline(y=final_energies[run], color='r', linestyle='--', alpha=0.7, 
+                        label=f'Final E = {final_energies[run]:.4f}')
+            
             ax_e.set_xlabel("Iteration")
             ax_e.set_ylabel("Graph Action E")
             ax_e.set_title(f"Convergence (Run {run+1})")
             ax_e.grid(True)
+            ax_e.legend()
         
         plt.tight_layout()
         plt.savefig("3D_quark_QCD_minimization_final.png", dpi=300, bbox_inches='tight')
