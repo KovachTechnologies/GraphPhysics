@@ -1,3 +1,7 @@
+# quark_sim.py - Unified Quark Graph-Action Simulator
+# Modes: neutron (3 quarks) or deuteron (6 quarks)
+# Simulations: linear, color, su3
+
 import torch
 import numpy as np
 import networkx as nx
@@ -11,16 +15,16 @@ import argparse
 from pathlib import Path
 import os
 
-if not os.path.exists( "graphs" ) :
-    os.mkdir( "graphs" )
+if not os.path.exists("graphs"):
+    os.mkdir("graphs")
 
 # ========================== LOAD CONFIG ==========================
 def load_config():
     parser = argparse.ArgumentParser(description="Unified Quark Graph-Action Simulator")
     parser.add_argument("--config", default="config.json", help="Path to config.json")
-    parser.add_argument("--seed", default=42525, help="Simulation seed")
-    parser.add_argument("--mode", choices=["neutron", "deuteron"], help="Override particle mode (neutron/deuteron)")
-    parser.add_argument("--sim", choices=["linear", "color", "su3"], help="Override simulation type (linear/color/su3)")
+    parser.add_argument("--seed", type=int, help="Simulation seed")
+    parser.add_argument("--mode", choices=["neutron", "deuteron"], help="Particle mode")
+    parser.add_argument("--sim", choices=["linear", "color", "su3"], help="Simulation physics level")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -36,15 +40,14 @@ def load_config():
         cfg["MODE"] = args.mode
     if args.sim:
         cfg["SIMULATION"] = args.sim
-    if args.seed :
-        cfg["simulation_seed"] = int( args.seed )
+    if args.seed is not None:
+        cfg["simulation_seed"] = args.seed
 
     # Defaults
     defaults = {
-        "simulation_seed": 42525,
+        "simulation_seed": 42,
         "MODE": "deuteron",
         "SIMULATION": "su3",
-        "N_QUARKS": 6,
         "DIM": 3,
         "CONFINEMENT_STRENGTH": 12.0,
         "REPULSION_STRENGTH": 2.0,
@@ -52,7 +55,7 @@ def load_config():
         "COLOR_SINGLET_STRENGTH": 12.0,
         "LEARNING_RATE": 0.07,
         "MAX_ITER": 2000,
-        "N_RANDOM_STARTS": 50,
+        "N_RANDOM_STARTS": 3,
         "DEFAULT_STATIC_ONLY": False,
         "ANIMATE_LIVE": False,
         "SAVE_MP4": True
@@ -71,11 +74,8 @@ torch.manual_seed(cfg["simulation_seed"])
 MODE = cfg["MODE"].lower()
 SIMULATION = cfg["SIMULATION"].lower()
 
-# Auto-set N_QUARKS based on mode
-if MODE == "deuteron":
-    N_QUARKS = 6
-else:
-    N_QUARKS = 3
+# Auto-set N_QUARKS based on MODE (removed redundancy)
+N_QUARKS = 6 if MODE == "deuteron" else 3
 
 DIM = cfg["DIM"]
 CONFINEMENT_STRENGTH = cfg["CONFINEMENT_STRENGTH"]
@@ -89,15 +89,15 @@ DEFAULT_STATIC_ONLY = cfg["DEFAULT_STATIC_ONLY"]
 ANIMATE_LIVE = cfg["ANIMATE_LIVE"]
 SAVE_MP4 = cfg["SAVE_MP4"]
 
-print(f"Running → MODE: {MODE} | SIMULATION: {SIMULATION} | N_QUARKS={N_QUARKS} | Runs={N_RANDOM_STARTS}")
+print(f"Running → MODE: {MODE} | SIMULATION: {SIMULATION} | Quarks: {N_QUARKS} | Runs: {N_RANDOM_STARTS}")
 
 # ========================== GRAPH SETUP ==========================
 def create_quark_graph():
     G = nx.complete_graph(N_QUARKS)
     if MODE == "deuteron":
-        labels = ['u_p', 'u_p', 'd_p', 'u_n', 'd_n', 'd_n']
+        labels = ['u', 'u', 'd', 'u', 'd', 'd']          # simplified
     else:
-        labels = ['u', 'd1', 'd2']
+        labels = ['u', 'd', 'd']                         # simplified neutron
     for i, label in enumerate(labels):
         G.nodes[i]['label'] = label
     return G
@@ -218,25 +218,39 @@ def color_vector_to_rgb(c_vec):
 
 def plot_3d(G, positions, colors_np, ax, title, energy=None):
     ax.cla()
+    
+    # Draw nodes and labels
     for i in range(N_QUARKS):
         if colors_np is not None and SIMULATION != "linear":
             rgb = color_vector_to_rgb(colors_np[i])
             if MODE == "deuteron":
                 tint = 0.2 if i < 3 else 0.8
-                rgb = tuple(0.6*x + 0.4*tint for x in rgb)
-            ax.scatter(*positions[i], color=rgb, s=380, edgecolor='black', linewidth=2.5)
+                rgb = tuple(0.6 * x + 0.4 * tint for x in rgb)
+            ax.scatter(*positions[i], color=rgb, s=380, edgecolor='black', linewidth=2.5, zorder=1)
         else:
             col = ['blue', 'red', 'red'][i % 3]
-            ax.scatter(*positions[i], color=col, s=300, edgecolor='black')
+            ax.scatter(*positions[i], color=col, s=300, edgecolor='black', zorder=1)
 
-        ax.text(*positions[i], f" {G.nodes[i]['label']}", color='white', fontsize=10, ha='center')
+        # Improved label placement - offset slightly to avoid overlap
+        label = G.nodes[i]['label']
+        offset = 0.25
+        ax.text(positions[i][0] + offset, 
+                positions[i][1] + offset, 
+                positions[i][2] + offset,
+                f"{label}", 
+                color='white', 
+                fontsize=10, 
+                ha='left', 
+                va='bottom',
+                bbox=dict(boxstyle="round,pad=0.2", facecolor='black', alpha=0.6), zorder=10)
 
+    # Draw edges
     for i in range(N_QUARKS):
         for j in range(i + 1, N_QUARKS):
             p1, p2 = positions[i], positions[j]
-            ax.plot(*zip(p1, p2), color='darkgreen', linewidth=3, alpha=0.85)
+            ax.plot(*zip(p1, p2), color='darkgreen', linewidth=3, alpha=0.85, zorder=2)
 
-    # Singlet info
+    # Singlet info in title
     info = ""
     if colors_np is not None and SIMULATION != "linear":
         if MODE == "deuteron":
@@ -248,8 +262,13 @@ def plot_3d(G, positions, colors_np, ax, title, energy=None):
             info = f" | Singlet={s:.3f}"
 
     ax.set_title(f"{title}\nE ≈ {energy:.3f}{info}")
-    ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
-    ax.set_xlim(-2, 13); ax.set_ylim(-2, 13); ax.set_zlim(-2, 13)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_xlim(-2, 13)
+    ax.set_ylim(-2, 13)
+    ax.set_zlim(-2, 13)
+
 
 # ========================== MAIN ==========================
 if __name__ == "__main__":
@@ -265,7 +284,7 @@ if __name__ == "__main__":
     for run in range(N_RANDOM_STARTS):
         if MODE == "deuteron":
             init_pos = np.random.rand(N_QUARKS, DIM) * 5 + 1.0
-            init_pos[3:] += [6, 0, 0]   # separate proton/neutron
+            init_pos[3:] += [6, 0, 0]   # separate clusters
         else:
             init_pos = np.random.rand(N_QUARKS, DIM) * 6 + 1.0
 
@@ -279,9 +298,10 @@ if __name__ == "__main__":
         print(f"Run {run+1:2d} → E = {energies[-1]:.4f}")
 
     best_idx = int(np.argmin(final_energies))
-    print(f"\n🎯 BEST RUN: #{best_idx+1} with E = {final_energies[best_idx]:.4f}")
+    best_energy = final_energies[best_idx]
+    print(f"\n🎯 BEST RUN: #{best_idx+1} with E = {best_energy:.4f}")
 
-    # Static figure (optional)
+    # Static figure
     if DEFAULT_STATIC_ONLY:
         print("Generating static figure...")
         cols = N_RANDOM_STARTS + 1
@@ -302,12 +322,12 @@ if __name__ == "__main__":
                              torch.stack([random_color_state() for _ in range(N_QUARKS)]) if SIMULATION != "linear" else None).item())
 
         plt.tight_layout()
-        plt.savefig(f"quark_{MODE}_{SIMULATION}_final.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"graphs/quark_{MODE}_{SIMULATION}_final.png", dpi=300, bbox_inches='tight')
         plt.show()
 
     # MP4 of BEST run
     if ANIMATE_LIVE or SAVE_MP4:
-        print(f"🎥 Animating BEST run (#{best_idx+1})...")
+        print(f"🎥 Animating BEST run (#{best_idx+1}, E={best_energy:.4f})...")
         hist_pos = histories_pos[best_idx]
         hist_col = histories_colors[best_idx]
         energies = np.array([total_energy(torch.tensor(p), 
@@ -339,14 +359,14 @@ if __name__ == "__main__":
         if SAVE_MP4:
             try:
                 writer = FFMpegWriter(fps=20, metadata=dict(artist='GraphPhysics'), bitrate=2000)
-                fname = f"graphs/quark_{MODE}_{SIMULATION}_E={final_energies[best_idx]}_best.mp4"
+                fname = f"graphs/quark_{MODE}_{SIMULATION}_E={best_energy:.4f}_best.mp4"
                 ani.save(fname, writer=writer)
-                print(f"✅ Saved: {fname}")
+                print(f"✅ Saved MP4: {fname}")
             except Exception as e:
                 print(f"MP4 failed: {e}. Trying GIF fallback...")
                 writer = PillowWriter(fps=20)
-                fname = f"graphs/quark_{MODE}_{SIMULATION}_E={final_energies[best_idx]}_best.gif"
+                fname = f"graphs/quark_{MODE}_{SIMULATION}_E={best_energy:.4f}_best.gif"
                 ani.save(fname, writer=writer)
-                print(f"✅ Saved fallback: {fname}")
+                print(f"✅ Saved fallback GIF: {fname}")
 
     print("\n✅ All done!")

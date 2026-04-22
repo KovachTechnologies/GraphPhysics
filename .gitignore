@@ -208,5 +208,9 @@ __marimo__/
 
 qcd/BU/
 qcd/graphs/
+qcd/run.sh
+qed/BU/
+qed/graphs/
+qed/run.sh
 
 *.DS_Store
