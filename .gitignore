@@ -212,5 +212,8 @@ qcd/run.sh
 qed/BU/
 qed/graphs/
 qed/run.sh
+standard_model/BU/
+standard_model/graphs/
+standard_model/run.sh
 
 *.DS_Store
