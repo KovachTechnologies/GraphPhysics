@@ -46,6 +46,7 @@ def load_config():
     # Defaults
     defaults = {
         "simulation_seed": 42,
+        "BOOK_MODE": True,
         "MODE": "deuteron",
         "SIMULATION": "su3",
         "DIM": 3,
@@ -324,6 +325,15 @@ if __name__ == "__main__":
         plt.tight_layout()
         plt.savefig(f"graphs/quark_{MODE}_{SIMULATION}_final.png", dpi=300, bbox_inches='tight')
         plt.show()
+
+    # Save publication-ready static figure of best configuration
+    if cfg.get("BOOK_MODE", False) or True:   # always for now
+        fig = plt.figure(figsize=(8,8))
+        ax = fig.add_subplot(111, projection='3d')
+        plot_3d(G, histories_pos[best_idx][-1], 
+                histories_colors[best_idx][-1] if histories_colors[best_idx] is not None else None,
+                ax, f"Stable {MODE} ({SIMULATION})", best_energy)
+        plt.savefig(f"graphs/quark_{MODE}_{SIMULATION}_stable.png", dpi=600, bbox_inches='tight')
 
     # MP4 of BEST run
     if ANIMATE_LIVE or SAVE_MP4:

@@ -1,4 +1,6 @@
 # black_hole_sim.py - Entanglement Graph Black Hole Simulation
+# Demonstrates horizon formation, evaporation, Page curve, and Planck-scale deviations
+
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -14,12 +16,16 @@ EVAPORATION_START = 90
 EVAPORATION_RATE = 0.008
 MAX_ITER = 280
 
+# Planck-scale parameters
+PLANCK_SCALE_FLUCTUATION = 0.018
+MEASURE_DEVIATIONS = True
+
 np.random.seed(42)
 
 # ========================= GRAPH SETUP =========================
 def create_2d_lattice():
     G = nx.grid_2d_graph(N_SIDE, N_SIDE)
-    # 8-connectivity
+    # Add diagonal edges for better connectivity (8-connectivity)
     for x in range(N_SIDE):
         for y in range(N_SIDE):
             for dx, dy in [(1,1),(1,-1),(-1,1),(-1,-1)]:
@@ -51,40 +57,59 @@ def local_curvature(node, mass):
     neighbors = get_neighbors(node)
     if not neighbors:
         return 0.0
-    
     m_local = mass[x, y]
     m_neighbors = np.array([mass[nx, ny] for nx, ny in neighbors])
     avg_m = m_neighbors.mean()
-    
     curvature = 1.25 * (m_local - avg_m) + 0.65 * (m_local - 0.12)
     return np.clip(curvature, -0.5, 2.8)
+
+def local_curvature_map(mass):
+    """Simple curvature proxy for fluctuation strength"""
+    curv = np.zeros_like(mass)
+    for x in range(N_SIDE):
+        for y in range(N_SIDE):
+            node = (x, y)
+            neighbors = get_neighbors(node)
+            if neighbors:
+                m_local = mass[x, y]
+                m_nb = np.mean([mass[nx, ny] for nx, ny in neighbors])
+                curv[x, y] = abs(m_local - m_nb)
+    return curv
 
 # ========================= SIMULATION =========================
 history_mass = []
 history_horizon = []
 history_bidirect = []
+history_S_rad = []
+history_S_bh = []
+history_deviation = []
 
-print("Running improved black hole simulation...")
+print("Running black hole simulation with Page curve + Planck-scale fluctuations...")
+
 for t in tqdm(range(MAX_ITER)):
     cx, cy = int(center[0]), int(center[1])
     
     # === 1. Mass dynamics ===
     if t < EVAPORATION_START:
-        # Radial growth
         xx, yy = np.indices(mass.shape)
         r = np.hypot(xx - cx, yy - cy)
         growth = MASS_INCREASE_RATE * (1 - t / 80) * np.exp(-r / 4.0)
         mass += growth
     else:
-        # Evaporation + smoothing + outward bias
         mass *= (1 - EVAPORATION_RATE)
         if t % 4 == 0:
             mass = gaussian_filter(mass, sigma=1.1)
             xx, yy = np.indices(mass.shape)
             r = np.hypot(xx - cx, yy - cy)
             noise = np.random.normal(0, 0.0045, mass.shape)
-            noise *= (r / (r.max() + 1e-8) + 0.2)   # outward preference
+            noise *= (r / (r.max() + 1e-8) + 0.2)
             mass += noise
+    
+    # === Planck-scale quantum fluctuations ===
+    if PLANCK_SCALE_FLUCTUATION > 0:
+        noise = np.random.normal(0, PLANCK_SCALE_FLUCTUATION, mass.shape)
+        noise *= (1 + 0.8 * local_curvature_map(mass))
+        mass += noise
     
     mass = np.clip(mass, 0.04, 9.0)
     
@@ -114,11 +139,29 @@ for t in tqdm(range(MAX_ITER)):
             vx, vy = v
             dist_v = np.hypot(vx - cx, vy - cy)
             if max(dist_u, dist_v) < horizon_r - 0.7:
-                continue  # one-way inside horizon
+                continue
             bidirectional += 1
     
     bidirect_frac = bidirectional / total if total > 0 else 0
     history_bidirect.append(bidirect_frac)
+    
+    # === 4. Page curve proxy ===
+    xx, yy = np.indices(mass.shape)
+    r = np.hypot(xx - cx, yy - cy)
+    inside = r < horizon_r
+    M_bh = mass[inside].sum()
+    M_rad = mass[~inside].sum()
+    
+    S_bh = (np.pi * horizon_r**2) * np.log(1 + M_bh)
+    S_rad = M_rad * np.log(1 + M_rad + 1e-6)
+    history_S_rad.append(S_rad)
+    history_S_bh.append(S_bh)
+    
+    # === 5. Planck deviation ===
+    if MEASURE_DEVIATIONS:
+        classical_hr = 0.6 * np.sqrt(M_bh) if M_bh > 0 else horizon_r
+        deviation = abs(horizon_r - classical_hr) / (classical_hr + 1e-6)
+        history_deviation.append(deviation)
     
     history_mass.append(mass.copy())
 
@@ -203,3 +246,42 @@ print(f"✅ Saved: {output_filepath}")
 animate(MAX_ITER-1)
 plt.savefig("graphs/black_hole_final.png", dpi=280, bbox_inches='tight')
 plt.show()
+
+# ========================= PAGE CURVE =========================
+print("\nGenerating Page curve...")
+fig_page, ax_page = plt.subplots(figsize=(10, 6))
+t_arr = np.arange(MAX_ITER)
+ax_page.plot(t_arr, history_S_rad, 'r-', lw=2.5, label=r'Radiation Entropy $S_{\rm rad}(t)$')
+ax_page.plot(t_arr, history_S_bh, 'b--', lw=2, label=r'Black Hole Entropy $S_{\rm BH}(t)$')
+ax_page.plot(t_arr, np.array(history_S_rad) + np.array(history_S_bh), 'k:', lw=1.5, 
+             alpha=0.7, label='Total Entropy (approx. conserved)')
+ax_page.axvline(EVAPORATION_START, color='gray', linestyle='--', label='Evaporation onset')
+ax_page.set_xlabel('Time $t$')
+ax_page.set_ylabel('Entropy (arbitrary units)')
+ax_page.set_title('Emergent Page Curve from Entanglement Graph Simulation')
+ax_page.legend()
+ax_page.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig("graphs/page_curve_proxy.png", dpi=300, bbox_inches='tight')
+print("✅ Saved: graphs/page_curve_proxy.png")
+
+# ========================= PLANCK-SCALE DEVIATIONS =========================
+if MEASURE_DEVIATIONS:
+    print("Generating Planck-scale deviation plot...")
+    fig_dev, ax_dev = plt.subplots(figsize=(10, 6))
+    ax_dev.plot(t_arr, history_deviation, 'm-', lw=2.5, label='Horizon Radius Deviation')
+    ax_dev.set_xlabel('Time $t$')
+    ax_dev.set_ylabel('Relative Deviation from Classical')
+    ax_dev.set_title('Planck-Scale Deviations in Entanglement Graph Black Hole')
+    ax_dev.legend()
+    ax_dev.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("graphs/planck_deviations.png", dpi=300, bbox_inches='tight')
+    print("✅ Saved: graphs/planck_deviations.png")
+
+# Final static frame
+print("Saving final frame...")
+animate(MAX_ITER-1)
+plt.savefig("graphs/black_hole_final.png", dpi=280, bbox_inches='tight')
+
+print("\n✅ All simulations complete!")

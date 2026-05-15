@@ -45,6 +45,7 @@ def load_config():
     # Defaults (analogous to quark model + U(1) specifics)
     defaults = {
         "simulation_seed": 42,
+        "BOOK_MODE" : True,
         "N_FERMIONS": 4,
         "FERMION_CHARGES": [1.0, -1.0, 1.0, -1.0],  # neutral example (e.g. two +1, two -1)
         "DIM": 3,
@@ -217,7 +218,6 @@ if __name__ == "__main__":
     best_energy = final_energies[best_idx]
     print(f"\n🎯 BEST RUN: #{best_idx+1} with E = {best_energy:.4f}")
 
-    # Static figure (snapshots of all runs + initial)
     if DEFAULT_STATIC_ONLY:
         print("Generating static figure...")
         cols = N_RANDOM_STARTS + 1
@@ -236,8 +236,19 @@ if __name__ == "__main__":
                 total_energy(torch.tensor(initial_pos_list[0]), charges).item())
 
         plt.tight_layout()
-        plt.savefig(f"graphs/fermion_u1_N{N_FERMIONS}_final.png", dpi=300, bbox_inches='tight')
-        plt.show()
+        plt.savefig(f"graphs/fermion_u1_N{N_FERMIONS}_final.png", dpi=600, bbox_inches='tight')
+        print(f"✅ Saved: graphs/fermion_u1_N{N_FERMIONS}_final.png")
+        # plt.show()  # uncomment if you want to display
+
+    # Save publication-ready static figure of best configuration
+    if cfg.get("BOOK_MODE", False) or True:   # always for now
+        fig_best = plt.figure(figsize=(8, 8))
+        ax_best = fig_best.add_subplot(111, projection='3d')
+        plot_3d(G, histories_pos[best_idx][-1], np.array(cfg["FERMION_CHARGES"]), 
+                ax_best, f"Best Fermion U(1) Config (E={best_energy:.4f})", best_energy)
+        plt.savefig(f"graphs/fermion_u1_N{N_FERMIONS}_stable.png", dpi=600, bbox_inches='tight')
+        print(f"✅ Saved best config: graphs/fermion_u1_N{N_FERMIONS}_stable.png")
+        plt.close(fig_best)
 
     # MP4 of BEST run
     if ANIMATE_LIVE or SAVE_MP4:

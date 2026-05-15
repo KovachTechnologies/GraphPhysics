@@ -1,4 +1,5 @@
 {
+  "BOOK_MODE": true,
   "N_FERMIONS": 4,
   "FERMION_CHARGES": [1.0, -1.0, 1.0, -1.0],
   "COULOMB_STRENGTH": 8.0,
